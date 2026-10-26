@@ -1,0 +1,11 @@
+# Entornos y archivos generados
+venv/
+__pycache__/
+*.pyc
+*.db
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
