@@ -86,9 +86,7 @@ class ProductoService {
       case DioExceptionType.cancel:
         return const ApiException('La petición fue cancelada.');
       case DioExceptionType.badCertificate:
-        return const ApiException(
-          'El certificado de seguridad del servidor no es válido.',
-        );
+        return const ApiException('El certificado de seguridad del servidor no es válido.');
       case DioExceptionType.badResponse:
         return _desdeRespuesta(e.response);
       case DioExceptionType.unknown:
@@ -100,11 +98,14 @@ class ProductoService {
     final codigo = respuesta?.statusCode;
     final detalle = _extraerDetalle(respuesta?.data);
 
-    if (codigo == 404) {
+    if (codigo == 401) {
       return ApiException(
-        detalle ?? 'El producto no existe.',
+        'Tu sesión expiró o no es válida. Inicia sesión nuevamente.',
         codigoHttp: codigo,
       );
+    }
+    if (codigo == 404) {
+      return ApiException(detalle ?? 'El producto no existe.', codigoHttp: codigo);
     }
     if (codigo == 422) {
       return ApiException(
@@ -113,10 +114,7 @@ class ProductoService {
       );
     }
     if (codigo != null && codigo >= 500) {
-      return ApiException(
-        'Error interno del servidor ($codigo).',
-        codigoHttp: codigo,
-      );
+      return ApiException('Error interno del servidor ($codigo).', codigoHttp: codigo);
     }
     return ApiException(
       detalle ?? 'Error inesperado del servidor ($codigo).',
@@ -132,9 +130,7 @@ class ProductoService {
       if (detail is List) {
         final mensajes = detail.whereType<Map>().map((item) {
           final loc = item['loc'];
-          final campo = (loc is List && loc.isNotEmpty)
-              ? loc.last.toString()
-              : 'dato';
+          final campo = (loc is List && loc.isNotEmpty) ? loc.last.toString() : 'dato';
           return '$campo: ${item['msg']}';
         }).toList();
         if (mensajes.isNotEmpty) return mensajes.join('\n');

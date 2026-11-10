@@ -10,6 +10,7 @@ class HomeShell extends StatelessWidget {
   final Widget child;
 
   int get _indiceActual {
+    if (ubicacion.startsWith('/sesion')) return 3;
     if (ubicacion.startsWith('/productos/nuevo')) return 2;
     if (ubicacion.startsWith('/productos')) return 1;
     return 0;
@@ -23,6 +24,8 @@ class HomeShell extends StatelessWidget {
         context.go('/productos');
       case 2:
         context.go('/productos/nuevo');
+      case 3:
+        context.go('/sesion');
     }
   }
 
@@ -48,6 +51,11 @@ class HomeShell extends StatelessWidget {
             icon: Icon(Icons.add_box_outlined),
             selectedIcon: Icon(Icons.add_box),
             label: 'Nuevo',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.account_circle_outlined),
+            selectedIcon: Icon(Icons.account_circle),
+            label: 'Sesión',
           ),
         ],
       ),
