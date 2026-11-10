@@ -20,9 +20,8 @@ class SesionController extends ChangeNotifier {
   static const _claveEmail = 'usuario_email';
   static const _claveId = 'usuario_id';
 
-  final FlutterSecureStorage _seguro = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  // Cifrado por defecto (Keystore en Android, Keychain en iOS).
+  final FlutterSecureStorage _seguro = const FlutterSecureStorage();
 
   String? _token;
   Usuario? _usuario;

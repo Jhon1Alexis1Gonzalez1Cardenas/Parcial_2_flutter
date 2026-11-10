@@ -75,6 +75,7 @@ class ProductoService {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
+      case DioExceptionType.transformTimeout:
         return const ApiException(
           'El servidor tardó demasiado en responder. Verifica que la API esté activa.',
         );
