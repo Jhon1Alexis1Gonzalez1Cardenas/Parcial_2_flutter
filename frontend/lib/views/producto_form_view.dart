@@ -13,8 +13,8 @@ import '../widgets/estado_vista.dart';
 /// Si [productoId] es null, registra (POST); si no, precarga y actualiza (PUT).
 ///
 /// - El código se genera automáticamente (se puede regenerar o escribir a mano).
-/// - La categoría se elige de las que ya existen en el inventario, o se crea
-///   una nueva con la opción "Nueva categoría…".
+/// - La categoría se elige en un desplegable con las que ya existen en el
+///   inventario; si no está, se usa "Agregar nueva categoría".
 class ProductoFormView extends StatefulWidget {
   const ProductoFormView({super.key, this.productoId});
 
@@ -34,7 +34,7 @@ class _ProductoFormViewState extends State<ProductoFormView> {
 
   final _nombre = TextEditingController();
   final _codigo = TextEditingController();
-  final _categoriaNueva = TextEditingController();
+  final _categoriaNueva = TextEditingController(); // usado por el diálogo
   final _precio = TextEditingController();
   final _cantidad = TextEditingController();
   final _descripcion = TextEditingController();
@@ -47,12 +47,11 @@ class _ProductoFormViewState extends State<ProductoFormView> {
 
   String? _categoriaSeleccionada;
 
-  bool get _esEdicion => widget.productoId != null;
+  /// Se incrementa para reconstruir el desplegable cuando cambia la selección
+  /// desde código (por ejemplo, después de agregar una categoría).
+  int _versionCategoria = 0;
 
-  /// Se muestra el campo de texto de categoría cuando no hay categorías
-  /// registradas todavía o cuando se eligió "Nueva categoría…".
-  bool get _crearCategoria =>
-      _categorias.isEmpty || _categoriaSeleccionada == _opcionNuevaCategoria;
+  bool get _esEdicion => widget.productoId != null;
 
   bool _cargando = true;
   bool _guardando = false;
@@ -151,6 +150,63 @@ class _ProductoFormViewState extends State<ProductoFormView> {
     _codigo.text = _generarCodigoUnico();
   }
 
+  // ------------------------- Categoría nueva --------------------------------
+
+  /// Pide el nombre de una categoría nueva, la agrega al desplegable y la deja
+  /// seleccionada. Queda guardada cuando se registra el producto.
+  Future<void> _agregarCategoria() async {
+    _categoriaNueva.clear();
+    final nombre = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Agregar nueva categoría'),
+        content: TextField(
+          controller: _categoriaNueva,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(labelText: 'Nombre de la categoría'),
+          onSubmitted: (valor) => Navigator.of(dialogContext).pop(valor.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_categoriaNueva.text.trim()),
+            child: const Text('Agregar'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    // Cancelado o vacío: se restaura la selección anterior del desplegable.
+    if (nombre == null || nombre.isEmpty) {
+      setState(() => _versionCategoria++);
+      return;
+    }
+
+    // Si ya existe (sin importar mayúsculas) se reutiliza la existente.
+    var elegida = nombre;
+    for (final existente in _categorias) {
+      if (existente.toLowerCase() == nombre.toLowerCase()) {
+        elegida = existente;
+        break;
+      }
+    }
+
+    setState(() {
+      if (!_categorias.contains(elegida)) {
+        _categorias = [..._categorias, elegida]
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      }
+      _categoriaSeleccionada = elegida;
+      _versionCategoria++;
+    });
+  }
+
   // --------------------------- Validaciones ---------------------------------
 
   String? _validarObligatorio(String? valor) {
@@ -161,8 +217,7 @@ class _ProductoFormViewState extends State<ProductoFormView> {
   String? _validarCodigo(String? valor) {
     final codigo = (valor ?? '').trim();
     if (codigo.isEmpty) return 'Campo obligatorio';
-    if (_codigosExistentes.contains(codigo))
-      return 'Este código ya está en uso';
+    if (_codigosExistentes.contains(codigo)) return 'Este código ya está en uso';
     return null;
   }
 
@@ -174,23 +229,11 @@ class _ProductoFormViewState extends State<ProductoFormView> {
 
   String? _validarCantidad(String? valor) {
     final numero = int.tryParse((valor ?? '').trim());
-    if (numero == null || numero < 0)
-      return 'Ingresa un número entero (0 o más)';
+    if (numero == null || numero < 0) return 'Ingresa un número entero (0 o más)';
     return null;
   }
 
   // ------------------------------ Guardar -----------------------------------
-
-  /// Categoría que se enviará a la API. Si la nueva ya existe (sin importar
-  /// mayúsculas), se reutiliza la existente para no duplicarla.
-  String _categoriaFinal() {
-    if (!_crearCategoria) return _categoriaSeleccionada!;
-    final nueva = _categoriaNueva.text.trim();
-    for (final existente in _categorias) {
-      if (existente.toLowerCase() == nueva.toLowerCase()) return existente;
-    }
-    return nueva;
-  }
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
@@ -202,7 +245,7 @@ class _ProductoFormViewState extends State<ProductoFormView> {
       id: widget.productoId,
       nombre: _nombre.text.trim(),
       codigo: _codigo.text.trim(),
-      categoria: _categoriaFinal(),
+      categoria: _categoriaSeleccionada!,
       precio: double.parse(_precio.text.trim().replaceAll(',', '.')),
       cantidad: int.parse(_cantidad.text.trim()),
       descripcion: descripcion.isEmpty ? null : descripcion,
@@ -259,6 +302,8 @@ class _ProductoFormViewState extends State<ProductoFormView> {
       return EstadoError(mensaje: _errorCarga!, onReintentar: _reintentarCarga);
     }
 
+    final esquema = Theme.of(context).colorScheme;
+
     return Form(
       key: _formKey,
       child: ListView(
@@ -290,53 +335,68 @@ class _ProductoFormViewState extends State<ProductoFormView> {
             validator: _validarCodigo,
           ),
           const SizedBox(height: 16),
-          if (_categorias.isNotEmpty) ...[
-            DropdownButtonFormField<String>(
-              value: _categoriaSeleccionada,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Categoría',
-                prefixIcon: Icon(Icons.sell_outlined),
-              ),
-              items: [
-                for (final categoria in _categorias)
-                  DropdownMenuItem<String>(
-                    value: categoria,
-                    child: Text(categoria),
-                  ),
-                const DropdownMenuItem<String>(
-                  value: _opcionNuevaCategoria,
+          DropdownButtonFormField<String>(
+            key: ValueKey(_versionCategoria),
+            value: _categoriaSeleccionada,
+            isExpanded: true,
+            menuMaxHeight: 320,
+            borderRadius: BorderRadius.circular(16),
+            dropdownColor: Colors.white,
+            hint: const Text('Selecciona una categoría'),
+            decoration: const InputDecoration(
+              labelText: 'Categoría',
+              prefixIcon: Icon(Icons.sell_outlined),
+            ),
+            items: [
+              for (final categoria in _categorias)
+                DropdownMenuItem<String>(
+                  value: categoria,
                   child: Row(
                     children: [
-                      Icon(Icons.add_circle_outline, size: 20),
-                      SizedBox(width: 8),
-                      Text('Nueva categoría…'),
+                      Icon(Icons.sell_outlined, size: 20, color: esquema.primary),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          categoria,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: categoria == _categoriaSeleccionada
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ],
-              onChanged: (valor) =>
-                  setState(() => _categoriaSeleccionada = valor),
-              validator: (valor) =>
-                  valor == null ? 'Selecciona una categoría' : null,
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (_crearCategoria) ...[
-            TextFormField(
-              controller: _categoriaNueva,
-              decoration: InputDecoration(
-                labelText: _categorias.isEmpty
-                    ? 'Categoría'
-                    : 'Nombre de la nueva categoría',
-                prefixIcon: const Icon(Icons.add_circle_outline),
-                helperText: 'Se guardará y quedará disponible para seleccionar',
+              DropdownMenuItem<String>(
+                value: _opcionNuevaCategoria,
+                child: Row(
+                  children: [
+                    Icon(Icons.add_circle_outline, size: 20, color: esquema.primary),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Agregar nueva categoría',
+                      style: TextStyle(
+                        color: esquema.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              textInputAction: TextInputAction.next,
-              validator: _validarObligatorio,
-            ),
-            const SizedBox(height: 16),
-          ],
+            ],
+            onChanged: (valor) {
+              if (valor == _opcionNuevaCategoria) {
+                _agregarCategoria();
+              } else {
+                setState(() => _categoriaSeleccionada = valor);
+              }
+            },
+            validator: (valor) =>
+                valor == null ? 'Selecciona o agrega una categoría' : null,
+          ),
+          const SizedBox(height: 16),
           TextFormField(
             controller: _precio,
             decoration: const InputDecoration(
@@ -345,9 +405,7 @@ class _ProductoFormViewState extends State<ProductoFormView> {
               helperText: 'Usa punto para decimales (ej: 1500.50)',
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-            ],
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
             textInputAction: TextInputAction.next,
             validator: _validarPrecio,
           ),
@@ -388,9 +446,7 @@ class _ProductoFormViewState extends State<ProductoFormView> {
                       ),
                     )
                   : const Icon(Icons.save_outlined),
-              label: Text(
-                _esEdicion ? 'Guardar cambios' : 'Registrar producto',
-              ),
+              label: Text(_esEdicion ? 'Guardar cambios' : 'Registrar producto'),
             ),
           ),
         ],
